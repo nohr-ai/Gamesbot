@@ -1,45 +1,64 @@
+import os
 import discord
 import asyncio
 import datetime
 import zoneinfo
 from discord.ext import commands, tasks
 from typing import Dict, List, Tuple, Optional, Any
+from dotenv import load_dotenv
 
 # Import custom modules
 import database
 import score_parser
 import game_config
 import role_manager
-from config import TOKEN
 
-# Get the CET time zone
-CET_TIMEZONE = zoneinfo.ZoneInfo("Europe/Berlin")
 
-# Enable message content intent
-intents = discord.Intents.all()
-intents.messages = True
-intents.guilds = True
-intents.message_content = True
-intents.members = True
+class GamesBot(commands.Bot):
+    """
+    Main bot class
+    """
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+    def __init__(self):
+        self.timezone = zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
+        intents = discord.Intents.all()
+        intents.messages = True
+        intents.guilds = True
+        intents.message_content = True
+        intents.members = True
+        super().__init__(
+            command_prefix=os.getenv("COMMAND_PREFIX", "!"), intents=intents
+        )
+        # Initialize db once, on_ready can be called every bot refresh/wakeup
+        database.initialize_db()
+
+        # Start scheduled tasks
+        check_weekly_scores()
+        check_monthly_scores()
+        now = datetime.datetime.now(TIMEZONE)
+        if 6 == now.weekday():
+            # Where TF is this shit defined?
+            await post_weekly_scores()
+        elif 1 == now.day:
+            await post_monthly_scores()
+
 
 @bot.event
 async def on_ready():
     """Handler for when the bot is ready."""
-    database.initialize_db()
-    print(f'Logged in as {bot.user}')
+    print(f"Logged in as {self.user}")
 
     # Start the scheduled tasks
     check_weekly_scores.start()
     check_monthly_scores.start()
 
     # Check if we should post scores immediately
-    now = datetime.datetime.now(CET_TIMEZONE)
+    now = datetime.datetime.now(TIMEZONE)
     if now.weekday() == 6:  # Sunday
         await post_weekly_scores()
     if now.day == 1:
         await post_monthly_scores()
+
 
 @bot.event
 async def on_message(message):
@@ -55,7 +74,9 @@ async def on_message(message):
         # Check each game configuration
         for game_key, config in game_config.GAME_CONFIGS.items():
             if config["is_game_message"](content):
-                print(f"Detected {config['name']} message from {message.author.display_name}")
+                print(
+                    f"Detected {config['name']} message from {message.author.display_name}"
+                )
                 await handle_game_message(message, game_key, config)
                 processed = True
                 break
@@ -63,10 +84,11 @@ async def on_message(message):
     if not processed:
         await bot.process_commands(message)  # Process commands if not a game message
 
+
 async def handle_game_message(message, game_key, game_config):
     """
     Handle a game message (Wordle, Connections, Framed, Gisnep, Bandle).
-    
+
     Args:
         message: The Discord message
         game_key: The key for the game in the GAME_CONFIGS dictionary
@@ -76,79 +98,106 @@ async def handle_game_message(message, game_key, game_config):
     member = message.author
     display_name = message.author.display_name
     user_id = message.author.id
-    
+
     # Parse the message content
     game_info = game_config["parse_function"](message.content)
-    
+
     if not game_info:
-        await message.channel.send(f"⚠️ Couldn't process your {game_config['name']} result.")
+        await message.channel.send(
+            f"⚠️ Couldn't process your {game_config['name']} result."
+        )
         return
-    
+
     # Save the score based on the game type
     if game_key == "wordle":
         game_config["save_score_function"](
-        user_id, display_name, 
-        game_info["game_number"],
-        game_info["attempts"], 
-        game_info.get("skill"),  # Use .get() to handle None values
-        game_info.get("luck"),
-        game_info.get("hard_mode", False)
-    )
-    
+            user_id,
+            display_name,
+            game_info["game_number"],
+            game_info["attempts"],
+            game_info.get("skill"),  # Use .get() to handle None values
+            game_info.get("luck"),
+            game_info.get("hard_mode", False),
+        )
+
     elif game_key == "connections":
-        game_config["save_score_function"](user_id, display_name, game_info["puzzle_number"],
-                                           game_info["total_score"], game_info["num_guesses"],
-                                           game_info["solved_purple_first"], game_info["solved_blue_first"])
+        game_config["save_score_function"](
+            user_id,
+            display_name,
+            game_info["puzzle_number"],
+            game_info["total_score"],
+            game_info["num_guesses"],
+            game_info["solved_purple_first"],
+            game_info["solved_blue_first"],
+        )
 
     elif game_key == "framed":
-        game_config["save_score_function"](user_id, display_name, game_info["game_number"],
-                                           game_info["attempts"], game_info["total_score"])
+        game_config["save_score_function"](
+            user_id,
+            display_name,
+            game_info["game_number"],
+            game_info["attempts"],
+            game_info["total_score"],
+        )
 
     elif game_key == "gisnep":
-        game_config["save_score_function"](user_id, display_name, game_info["game_number"],
-                                           game_info["completion_time"])
+        game_config["save_score_function"](
+            user_id,
+            display_name,
+            game_info["game_number"],
+            game_info["completion_time"],
+        )
 
     elif game_key == "bandle":
-        game_config["save_score_function"](user_id, display_name, game_info["game_number"],
-                                           game_info["attempts"], game_info["total_score"],
-                                           game_info["bonus_completed"], game_info["bonus_total"])
-    
+        game_config["save_score_function"](
+            user_id,
+            display_name,
+            game_info["game_number"],
+            game_info["attempts"],
+            game_info["total_score"],
+            game_info["bonus_completed"],
+            game_info["bonus_total"],
+        )
+
     # Create the acknowledgement message
     response = game_config["create_acknowledgement"](display_name, game_info)
-    
-  # Get the latest game number from the database
+
+    # Get the latest game number from the database
     game_number_key = game_config["game_number_key"]  # Use game_number_key from config
-    latest_game_number = game_config["get_latest_game_number_function"](game_config["name"])
+    latest_game_number = game_config["get_latest_game_number_function"](
+        game_config["name"]
+    )
     print(  # DEBUGGING
-                        f"{game_config['name']}: Retrieved latest_game_number ="
-                        f" {latest_game_number}"
-                    )
+        f"{game_config['name']}: Retrieved latest_game_number ="
+        f" {latest_game_number}"
+    )
     current_game_number = game_info[game_number_key]
 
     # If this is the latest game, update roles and notify
     if current_game_number >= latest_game_number:
-        game_config["update_latest_game_number_function"](game_config["name"], current_game_number)
+        game_config["update_latest_game_number_function"](
+            game_config["name"], current_game_number
+        )
         print(  # DEBUGGING
-                        f"{game_config['name']}: Updated latest_game_number to"
-                        f" {game_number_key}"
-                    )
-        
+            f"{game_config['name']}: Updated latest_game_number to"
+            f" {game_number_key}"
+        )
+
         # Handle role assignment
         success = await role_manager.handle_game_role_assignment(
-             guild, 
-             member, 
-             game_config, 
-             current_game_number,
-             latest_game_number
-)
-        
+            guild, member, game_config, current_game_number, latest_game_number
+        )
+
         if success:
             chat_channel_name = game_config["chat_channel_name"]
             response += f"\n\n{member.mention} You now have access to the {chat_channel_name} channel!"
-            await role_manager.introduce_player_in_game_channel(guild, display_name, game_config, game_info)
-    
+            await role_manager.introduce_player_in_game_channel(
+                guild, display_name, game_config, game_info
+            )
+
     # Send the response message
     await message.channel.send(response)
+
 
 @bot.command()
 async def myscore(ctx):
@@ -166,15 +215,16 @@ async def myscore(ctx):
 
     await ctx.send(message)
 
+
 @bot.command()
 async def leaderboard(ctx, game="wordle"):
     """Display the leaderboard for Wordle or Connections."""
     game = game.lower()
-    
+
     if game not in game_config.GAME_CONFIGS:
         await ctx.send("Invalid game choice! Use 'wordle' or 'connections'.")
         return
-    
+
     config = game_config.GAME_CONFIGS[game]
     leaderboard = config["get_leaderboard_function"]()
     game_name = config["name"]
@@ -187,48 +237,8 @@ async def leaderboard(ctx, game="wordle"):
     # Send leaderboard to channel
     await ctx.send(leaderboard_message)
 
-async def post_scores(period: str):
-    """Post scores for the given period (weekly or monthly) to the 'leaderboards' channel."""
-    # Fetch scores from the database
-    if period == "weekly":
-        scores_by_game = database.get_weekly_scores()
-    elif period == "monthly":
-        scores_by_game = database.get_monthly_scores()
-    else:
-        raise ValueError("Invalid period. Use 'weekly' or 'monthly'.")
-
-    # Find the 'leaderboards' channel
-    leaderboard_channel = discord.utils.get(bot.get_all_channels(), name="leaderboards")
-    if not leaderboard_channel:
-        print("Warning: Could not find the 'leaderboards' channel.")
-        return
-
-    # Iterate over each game and post scores
-    for game, scores in scores_by_game.items():
-        if not scores:
-            continue
-        
-        message = f"**📅 {period.capitalize()} {game} Leaderboard**\n"
-        for i, (player, score) in enumerate(scores, 1):
-            message += f"{i}. {player}: {score} points\n"
-        
-        try:
-            await leaderboard_channel.send(message)
-            print(f"{period.capitalize()} {game} leaderboard posted.")
-        except Exception as e:
-            print(f"Error posting {period} {game} leaderboard: {e}")
-
-@tasks.loop(time=datetime.time(hour=23, minute=59, second=50, tzinfo=CET_TIMEZONE))
-async def check_weekly_scores():
-    """Post weekly leaderboards on Sunday."""
-    if datetime.datetime.now(CET_TIMEZONE).weekday() == 6:  # Sunday
-        await post_scores("weekly")
-
-@tasks.loop(time=datetime.time(hour=0, minute=1, second=0, tzinfo=CET_TIMEZONE))
-async def check_monthly_scores():
-    """Post monthly leaderboards on the first of the month."""
-    if datetime.datetime.now(CET_TIMEZONE).day == 1:
-        await post_scores("monthly")
 
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    load_dotenv()
+    GamesBot().run(os.getenv("TOKEN"))
+    # bot.run(os.getenv("TOKEN"))
