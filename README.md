@@ -1,9 +1,15 @@
 Running Tests
 ==================================================
 
-Commands to install dependencies and run unit tests (bash syntax).
+Commands to install dependencies and run unit tests (bash syntax) for Ubuntu.
 
 ```bash
+# Update package index and upgrade
+sudo apt update && sudo apt upgrade -y
+
+# Install LibreOffice
+sudo apt install libreoffice
+
 # Create virtual environment
 python3 -m venv .venv
 

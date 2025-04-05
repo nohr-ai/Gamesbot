@@ -1,118 +1,13 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from game_config import GAME_CONFIGS
 import zoneinfo
 
 
-def initialize_db():
-    """Create the database and tables if they don't exist."""
-    try:
-        with sqlite3.connect(os.getenv("DB_NAME")) as db:
-            cursor = db.cursor()
-            # Wordle. Added hard_mode column and made skill/luck nullable
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS wordle_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    display_name TEXT,
-                    game_number TEXT,
-                    attempts INTEGER,
-                    skill INTEGER NULL,
-                    luck INTEGER NULL,
-                    hard_mode BOOLEAN,
-                    total_score INTEGER,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # Connections table (corrected)
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS connections_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    display_name TEXT,
-                    puzzle_number TEXT,
-                    total_score INTEGER,
-                    guesses INTEGER,
-                    solved_purple_first BOOLEAN,
-                    solved_blue_first BOOLEAN,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # New generic table for tracking latest game numbers
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS latest_game_numbers (
-                    game_name TEXT PRIMARY KEY,
-                    latest_number INTEGER
-                )
-            """
-            )
-
-            # Initialize with 0 if empty
-            for game in GAME_CONFIGS.keys():
-                cursor.execute(
-                    "INSERT OR IGNORE INTO latest_game_numbers (game_name, latest_number) VALUES (?, 0)",
-                    (game,),
-                )
-
-            # Framed Table
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS framed_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    display_name TEXT,
-                    game_number INTEGER,
-                    attempts INTEGER,
-                    total_score INTEGER,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # Gisnep Table (Stores time instead of points)
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS gisnep_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    display_name TEXT,
-                    game_number INTEGER,
-                    completion_time INTEGER, -- Time in seconds
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # Bandle Table
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS bandle_scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    display_name TEXT,
-                    game_number INTEGER,
-                    attempts INTEGER,
-                    total_score INTEGER,
-                    bonus_completed INTEGER,
-                    bonus_total INTEGER,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-    except sqlite3.Error as e:
-        print(f"Failed to initialize db: {e}")
-        exit(1)
-
-
 def execute_db_command(command: str, parameters: tuple = (), get=False) -> list | None:
+    """
+    Execute command to DB
+    """
     retval = None
     with sqlite3.connect(os.getenv("DB_NAME")) as db:
         cursor = db.cursor()
@@ -123,6 +18,108 @@ def execute_db_command(command: str, parameters: tuple = (), get=False) -> list 
         if get:
             retval = cursor.fetchall()
         return retval
+
+
+def initialize_db():
+    """Create the database and tables if they don't exist."""
+    # Wordle. Added hard_mode column and made skill/luck nullable
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS wordle_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            display_name TEXT,
+            game_number TEXT,
+            attempts INTEGER,
+            skill INTEGER NULL,
+            luck INTEGER NULL,
+            hard_mode BOOLEAN,
+            total_score INTEGER,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    # Connections table (corrected)
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS connections_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            display_name TEXT,
+            puzzle_number TEXT,
+            total_score INTEGER,
+            guesses INTEGER,
+            solved_purple_first BOOLEAN,
+            solved_blue_first BOOLEAN,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    # New generic table for tracking latest game numbers
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS latest_game_numbers (
+            game_name TEXT PRIMARY KEY,
+            latest_number INTEGER
+        )
+        """
+    )
+
+    # Initialize with 0 if empty
+    # TODO: remove this hardcode here
+    for game in ["wordle", "connections", "framed", "gisnep", "bandle"]:
+        execute_db_command(
+            "INSERT OR IGNORE INTO latest_game_numbers (game_name, latest_number) VALUES (?, 0)",
+            (game,),
+        )
+
+    # Framed Table
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS framed_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            display_name TEXT,
+            game_number INTEGER,
+            attempts INTEGER,
+            total_score INTEGER,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    # Gisnep Table (Stores time instead of points)
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS gisnep_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            display_name TEXT,
+            game_number INTEGER,
+            completion_time INTEGER, -- Time in seconds
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    # Bandle Table
+    execute_db_command(
+        """
+        CREATE TABLE IF NOT EXISTS bandle_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            display_name TEXT,
+            game_number INTEGER,
+            attempts INTEGER,
+            total_score INTEGER,
+            bonus_completed INTEGER,
+            bonus_total INTEGER,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
 
 
 def save_wordle_score(

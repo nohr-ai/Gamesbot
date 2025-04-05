@@ -13,31 +13,47 @@ import score_parser
 import game_config
 import role_manager
 
-# Get the CET time zone
-CET_TIMEZONE = zoneinfo.ZoneInfo("Europe/Berlin")
 
-# Enable message content intent
-intents = discord.Intents.all()
-intents.messages = True
-intents.guilds = True
-intents.message_content = True
-intents.members = True
+class GamesBot(commands.Bot):
+    """
+    Main bot class
+    """
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+    def __init__(self):
+        self.timezone = zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
+        intents = discord.Intents.all()
+        intents.messages = True
+        intents.guilds = True
+        intents.message_content = True
+        intents.members = True
+        super().__init__(
+            command_prefix=os.getenv("COMMAND_PREFIX", "!"), intents=intents
+        )
+        # Initialize db once, on_ready can be called every bot refresh/wakeup
+        database.initialize_db()
+
+        # Start scheduled tasks
+        check_weekly_scores()
+        check_monthly_scores()
+        now = datetime.datetime.now(TIMEZONE)
+        if 6 == now.weekday():
+            # Where TF is this shit defined?
+            await post_weekly_scores()
+        elif 1 == now.day:
+            await post_monthly_scores()
 
 
 @bot.event
 async def on_ready():
     """Handler for when the bot is ready."""
-    database.initialize_db()
-    print(f"Logged in as {bot.user}")
+    print(f"Logged in as {self.user}")
 
     # Start the scheduled tasks
     check_weekly_scores.start()
     check_monthly_scores.start()
 
     # Check if we should post scores immediately
-    now = datetime.datetime.now(CET_TIMEZONE)
+    now = datetime.datetime.now(TIMEZONE)
     if now.weekday() == 6:  # Sunday
         await post_weekly_scores()
     if now.day == 1:
@@ -222,52 +238,7 @@ async def leaderboard(ctx, game="wordle"):
     await ctx.send(leaderboard_message)
 
 
-async def post_scores(period: str):
-    """Post scores for the given period (weekly or monthly) to the 'leaderboards' channel."""
-    # Fetch scores from the database
-    if period == "weekly":
-        scores_by_game = database.get_weekly_scores()
-    elif period == "monthly":
-        scores_by_game = database.get_monthly_scores()
-    else:
-        raise ValueError("Invalid period. Use 'weekly' or 'monthly'.")
-
-    # Find the 'leaderboards' channel
-    leaderboard_channel = discord.utils.get(bot.get_all_channels(), name="leaderboards")
-    if not leaderboard_channel:
-        print("Warning: Could not find the 'leaderboards' channel.")
-        return
-
-    # Iterate over each game and post scores
-    for game, scores in scores_by_game.items():
-        if not scores:
-            continue
-
-        message = f"**📅 {period.capitalize()} {game} Leaderboard**\n"
-        for i, (player, score) in enumerate(scores, 1):
-            message += f"{i}. {player}: {score} points\n"
-
-        try:
-            await leaderboard_channel.send(message)
-            print(f"{period.capitalize()} {game} leaderboard posted.")
-        except Exception as e:
-            print(f"Error posting {period} {game} leaderboard: {e}")
-
-
-@tasks.loop(time=datetime.time(hour=23, minute=59, second=50, tzinfo=CET_TIMEZONE))
-async def check_weekly_scores():
-    """Post weekly leaderboards on Sunday."""
-    if datetime.datetime.now(CET_TIMEZONE).weekday() == 6:  # Sunday
-        await post_scores("weekly")
-
-
-@tasks.loop(time=datetime.time(hour=0, minute=1, second=0, tzinfo=CET_TIMEZONE))
-async def check_monthly_scores():
-    """Post monthly leaderboards on the first of the month."""
-    if datetime.datetime.now(CET_TIMEZONE).day == 1:
-        await post_scores("monthly")
-
-
 if __name__ == "__main__":
     load_dotenv()
-    bot.run(os.getenv("TOKEN"))
+    GamesBot().run(os.getenv("TOKEN"))
+    # bot.run(os.getenv("TOKEN"))
