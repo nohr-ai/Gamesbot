@@ -2,6 +2,7 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 from game_config import GAME_CONFIGS
+import zoneinfo
 
 
 def initialize_db():
@@ -133,27 +134,23 @@ def save_wordle_score(
         score = 0
 
     total_score = (skill or 0) + score - (luck or 0)
-    try:
-        execute_db_command(
-            """
-                INSERT INTO wordle_scores (user_id, display_name, game_number, attempts, skill, luck, hard_mode, total_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-            (
-                user_id,
-                display_name,
-                game_number,
-                attempts,
-                skill,
-                luck,
-                hard_mode,
-                total_score,
-            ),
-        )
-    except sqlite3.Error as e:
-        print(
-            f"Could not save Wordle score for {user_id}/{display_name}/{game_number}: {e}"
-        )
+
+    execute_db_command(
+        """
+            INSERT INTO wordle_scores (user_id, display_name, game_number, attempts, skill, luck, hard_mode, total_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+        (
+            user_id,
+            display_name,
+            game_number,
+            attempts,
+            skill,
+            luck,
+            hard_mode,
+            total_score,
+        ),
+    )
 
 
 def save_connections_score(
@@ -166,77 +163,61 @@ def save_connections_score(
     solved_blue_first,
 ):
     """Save a new Connections score."""
-    try:
-        execute_db_command(
-            """
-                INSERT INTO connections_scores (user_id, display_name, puzzle_number, total_score, guesses, solved_purple_first, solved_blue_first)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                display_name,
-                puzzle_number,
-                total_score,
-                guesses,
-                solved_purple_first,
-                solved_blue_first,
-            ),
-        )
-    except sqlite3.Error as e:
-        print(
-            f"Could not save new connections score for {user_id}/{display_name}/{puzzle_number}: {e}"
-        )
+    execute_db_command(
+        """
+            INSERT INTO connections_scores (user_id, display_name, puzzle_number, total_score, guesses, solved_purple_first, solved_blue_first)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            display_name,
+            puzzle_number,
+            total_score,
+            guesses,
+            solved_purple_first,
+            solved_blue_first,
+        ),
+    )
 
 
 def create_connections_scores_table():
     """Create the Connections scores table if it doesn't exist."""
-    try:
-        execute_db_command(
-            """
-                CREATE TABLE IF NOT EXISTS connections_scores (
-                    user_id INTEGER,
-                    display_name TEXT,
-                    puzzle_number INTEGER,
-                    total_score INTEGER,
-                    guesses INTEGER,
-                    solved_purple_first BOOLEAN,
-                    solved_blue_first BOOLEAN,
-                    PRIMARY KEY (user_id, puzzle_number)
-                )
-            """
-        )
-    except sqlite3.Error as e:
-        print(f"Could not create connections score table: {e}")
+    execute_db_command(
+        """
+            CREATE TABLE IF NOT EXISTS connections_scores (
+                user_id INTEGER,
+                display_name TEXT,
+                puzzle_number INTEGER,
+                total_score INTEGER,
+                guesses INTEGER,
+                solved_purple_first BOOLEAN,
+                solved_blue_first BOOLEAN,
+                PRIMARY KEY (user_id, puzzle_number)
+            )
+        """
+    )
 
 
 def save_framed_score(user_id, display_name, game_number, attempts, total_score):
     """Save a new Framed score."""
-    try:
-        execute_db_command(
-            """
-                INSERT INTO framed_scores (user_id, display_name, game_number, attempts, total_score)
-                VALUES (?, ?, ?, ?, ?)
-            """,
-            (user_id, display_name, game_number, attempts, total_score),
-        )
-    except sqlite3.Error as e:
-        print(f"Could not save new Framed score: {e}")
+    execute_db_command(
+        """
+            INSERT INTO framed_scores (user_id, display_name, game_number, attempts, total_score)
+            VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, display_name, game_number, attempts, total_score),
+    )
 
 
 def save_gisnep_score(user_id, display_name, game_number, completion_time):
     """Save a new Gisnep score (only stores time)."""
-    try:
-        execute_db_command(
-            """
-            INSERT INTO gisnep_scores (user_id, display_name, game_number, completion_time)
-            VALUES (?, ?, ?, ?)
-            """,
-            (user_id, display_name, game_number, completion_time),
-        )
-    except sqlite3.Error as e:
-        print(
-            f"Could not save new Gisnep score for {user_id}/{display_name}/{game_number}: {e}"
-        )
+    execute_db_command(
+        """
+        INSERT INTO gisnep_scores (user_id, display_name, game_number, completion_time)
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, display_name, game_number, completion_time),
+    )
 
 
 def save_bandle_score(
@@ -249,376 +230,289 @@ def save_bandle_score(
     bonus_total,
 ):
     """Save a new Bandle score, including bonus rounds separately."""
-    try:
-        execute_db_command(
-            """
-                INSERT INTO bandle_scores (user_id, display_name, game_number, attempts, total_score, bonus_completed, bonus_total)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                display_name,
-                game_number,
-                attempts,
-                total_score,
-                bonus_completed,
-                bonus_total,
-            ),
-        )
-    except sqlite3.Error as e:
-        print(
-            f"Could not save a new Bandle score for {user_id}/{display_name}/{game_number}: {e}"
-        )
+    execute_db_command(
+        """
+            INSERT INTO bandle_scores (user_id, display_name, game_number, attempts, total_score, bonus_completed, bonus_total)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            display_name,
+            game_number,
+            attempts,
+            total_score,
+            bonus_completed,
+            bonus_total,
+        ),
+    )
 
 
-def get_recent_scores(user_id, limit=5) -> list | None:
+# Database functions for tracking roles (add these to your database.py file)
+def save_user_role(user_id, role_name, game_number, expires_at):
+    """Save information about a role granted to a user."""
+    execute_db_command(
+        """
+        INSERT OR REPLACE INTO user_roles 
+        (user_id, role_name, game_number, expires_at) 
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, role_name, game_number, expires_at),
+    )
+
+
+def get_recent_scores(user_id, limit=5) -> list:
     """Retrieve the last `limit` games played by a user."""
-    retval = None
-    try:
-        retval = execute_db_command(
-            """
+    return execute_db_command(
+        """
                 SELECT game_number, attempts, skill, luck, timestamp
                 FROM wordle_scores
                 WHERE user_id = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
             """,
-            (user_id, limit),
-            True,
-        )
-    except sqlite3.Error as e:
-        print(f"Could not retrieve last 'limit' games played by {user_id}: {e}")
-    finally:
-        return retval
+        (user_id, limit),
+        True,
+    )
 
 
 def get_wordle_leaderboard() -> list:
     """Fetch the top players for Wordle leaderboard."""
-    leaderboard = []
-    try:
-        leaderboard = execute_db_command(
-            """
+    return execute_db_command(
+        """
                 SELECT display_name, MAX(total_score) AS best_score
                 FROM wordle_scores
                 GROUP BY display_name
                 ORDER BY best_score DESC
                 LIMIT 10
             """,
-            get=True,
-        )
-    except sqlite3.Error as e:
-        print(f"Could not fetch top players for wordle leaderboard: {e}")
-    finally:
-        return leaderboard
+        get=True,
+    )
 
 
 def get_connections_leaderboard():
     """Fetch the top players for Connections leaderboard."""
-    leaderboard = []
-    try:
-        leaderboard = execute_db_command(
-            """
+    return execute_db_command(
+        """
                 SELECT display_name, SUM(total_score) AS total_score
                 FROM connections_scores
                 GROUP BY display_name
                 ORDER BY total_score DESC
                 LIMIT 10
             """,
-            get=True,
-        )
-    except sqlite3.Error as e:
-        print(f"Could not fetch top players for connections leaderboard: {e}")
-    finally:
-        return leaderboard
+        get=True,
+    )
 
 
 def get_framed_leaderboard():
     """Fetch top players for Framed based on highest scores."""
-    leaderboard = []
-    try:
-        leaderboard = execute_db_command(
-            """
+    return execute_db_command(
+        """
             SELECT display_name, MAX(total_score) AS best_score
             FROM framed_scores
             GROUP BY display_name
             ORDER BY best_score DESC
             LIMIT 10
             """,
-            get=True,
-        )
-    except sqlite3.Error as e:
-        print(f"Could not fetch top players for framed: {e}")
-    finally:
-        return []
+        get=True,
+    )
 
 
 def get_gisnep_leaderboard():
     """Fetch top players for Gisnep, ranking by shortest average time."""
-    leaderboard = []
-    try:
-        leaderboard = execute_db_command(
-            """
+    return execute_db_command(
+        """
             SELECT display_name, AVG(completion_time) AS avg_time, COUNT(*) AS games_played
             FROM gisnep_scores
             GROUP BY display_name
             ORDER BY avg_time ASC, games_played DESC
             LIMIT 10
             """,
-            get=True,
-        )
-    except sqlite3.Error as e:
-        print(f"Could not fetch top players for gisnep: {e}")
-    finally:
-        return leaderboard
+        get=True,
+    )
 
 
 def get_bandle_leaderboard():
     """Fetch top players for Bandle based on highest total scores."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
+    return execute_db_command(
         """
         SELECT display_name, SUM(total_score) AS total_score
         FROM bandle_scores
         GROUP BY display_name
         ORDER BY total_score DESC
         LIMIT 10
-    """
+        """
     )
-    leaderboard = cursor.fetchall()
-    conn.close()
-    return leaderboard
 
 
 def get_weekly_scores():
     """Fetch total scores for all games for the past week."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    one_week_ago = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-
-    try:
-        # Wordle
-        cursor.execute(
-            """
+    # Todo, set default one place
+    one_week_ago = (
+        datetime.now(zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin")))
+        - timedelta(days=7)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    wordle = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM wordle_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (one_week_ago,),
-        )
-        wordle_scores = cursor.fetchall()
-
-        # Connections
-        cursor.execute(
-            """
+        (one_week_ago,),
+        get=True,
+    )
+    connections = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM connections_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (one_week_ago,),
-        )
-        connections_scores = cursor.fetchall()
-
-        # Framed
-        cursor.execute(
-            """
+        (one_week_ago,),
+        get=True,
+    )
+    framed = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM framed_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (one_week_ago,),
-        )
-        framed_scores = cursor.fetchall()
-
-        # Gisnep (rank by shortest average time)
-        cursor.execute(
-            """
+        (one_week_ago,),
+        get=True,
+    )
+    gisnep = execute_db_command(
+        """
             SELECT display_name, AVG(completion_time) AS avg_time
             FROM gisnep_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY avg_time ASC
         """,
-            (one_week_ago,),
-        )
-        gisnep_scores = cursor.fetchall()
-
-        # Bandle
-        cursor.execute(
-            """
+        (one_week_ago,),
+        get=True,
+    )
+    bandle = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM bandle_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (one_week_ago,),
-        )
-        bandle_scores = cursor.fetchall()
-
-        conn.close()
-
-        return {
-            "Wordle": wordle_scores,
-            "Connections": connections_scores,
-            "Framed": framed_scores,
-            "Gisnep": gisnep_scores,
-            "Bandle": bandle_scores,
-        }
-
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-        conn.close()
-        return {}
+        (one_week_ago,),
+        get=True,
+    )
+    return {
+        "Wordle": wordle,
+        "Connections": connections,
+        "Framed": framed,
+        "Gisnep": gisnep,
+        "Bandle": bandle,
+    }
 
 
 def get_monthly_scores():
     """Fetch total scores for all games for the past month."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
 
     first_day_of_month = (
-        datetime.utcnow()
+        datetime.now(zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin")))
         .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         .strftime("%Y-%m-%d %H:%M:%S")
     )
-
-    try:
-        # Wordle
-        cursor.execute(
-            """
+    wordle = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM wordle_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (first_day_of_month,),
-        )
-        wordle_scores = cursor.fetchall()
-
-        # Connections
-        cursor.execute(
-            """
+        (first_day_of_month,),
+        get=True,
+    )
+    connections = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM connections_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (first_day_of_month,),
-        )
-        connections_scores = cursor.fetchall()
-
-        # Framed
-        cursor.execute(
-            """
+        (first_day_of_month,),
+        get=True,
+    )
+    framed = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM framed_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (first_day_of_month,),
-        )
-        framed_scores = cursor.fetchall()
-
-        # Gisnep (rank by shortest average time)
-        cursor.execute(
-            """
+        (first_day_of_month,),
+        get=True,
+    )
+    gisnep = execute_db_command(
+        """
             SELECT display_name, AVG(completion_time) AS avg_time
             FROM gisnep_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY avg_time ASC
         """,
-            (first_day_of_month,),
-        )
-        gisnep_scores = cursor.fetchall()
-
-        # Bandle
-        cursor.execute(
-            """
+        (first_day_of_month,),
+        get=True,
+    )
+    bandle = execute_db_command(
+        """
             SELECT display_name, SUM(total_score) AS total_score
             FROM bandle_scores
             WHERE timestamp >= ?
             GROUP BY display_name
             ORDER BY total_score DESC
         """,
-            (first_day_of_month,),
-        )
-        bandle_scores = cursor.fetchall()
-
-        conn.close()
-
-        return {
-            "Wordle": wordle_scores,
-            "Connections": connections_scores,
-            "Framed": framed_scores,
-            "Gisnep": gisnep_scores,
-            "Bandle": bandle_scores,
-        }
-
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-        conn.close()
-        return {}
-
-
-# Database functions for tracking roles (add these to your database.py file)
-def save_user_role(user_id, role_name, game_number, expires_at):
-    """Save information about a role granted to a user."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO user_roles 
-        (user_id, role_name, game_number, expires_at) 
-        VALUES (?, ?, ?, ?)
-    """,
-        (user_id, role_name, game_number, expires_at),
+        (first_day_of_month,),
+        get=True,
     )
-    conn.commit()
-    conn.close()
+    return {
+        "Wordle": wordle,
+        "Connections": connections,
+        "Framed": framed,
+        "Gisnep": gisnep,
+        "Bandle": bandle,
+    }
 
 
 def get_expired_roles():
     """Get all expired roles that need to be removed."""
-    now = datetime.datetime.now(cet_timezone).strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
+    now = datetime.datetime.now(
+        zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    return execute_db_command(
         """
         SELECT user_id, role_name FROM user_roles
         WHERE expires_at < ?
-    """,
+        """,
         (now,),
+        get=True,
     )
-    expired_roles = cursor.fetchall()
-    conn.close()
-    return expired_roles
 
 
 def delete_expired_roles():
     """Delete records of expired roles from the database."""
-    now = datetime.datetime.now(cet_timezone).strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
+    now = datetime.datetime.now(
+        zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    execute_db_command(
         """
         DELETE FROM user_roles WHERE expires_at < ?
-    """,
+        """,
         (now,),
     )
-    conn.commit()
-    conn.close()
 
 
 def get_overall_recent_wordle_scores(limit=5):
@@ -626,25 +520,16 @@ def get_overall_recent_wordle_scores(limit=5):
     Fetches the most recent Wordle scores from all users, ordered by timestamp descending,
     limited to the specified number.
     """
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
+    return execute_db_command(
+        """
             SELECT game_number, attempts, skill, luck, timestamp
             FROM wordle_scores
             ORDER BY timestamp DESC
             LIMIT ?
         """,
-            (limit,),
-        )
-        scores = cursor.fetchall()
-        return scores
-    except sqlite3.Error as e:
-        print(f"Database error in get_overall_recent_wordle_scores: {e}")
-        return []  # Return empty list in case of error
-    finally:
-        conn.close()
+        (limit,),
+        get=True,
+    )
 
 
 def get_overall_recent_connections_puzzle_number(limit=5):
@@ -653,52 +538,41 @@ def get_overall_recent_connections_puzzle_number(limit=5):
     ordered by timestamp descending, limited to the specified number.
     Returns a list of tuples, each containing (puzzle_number, timestamp).
     """
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    try:
-        cursor.execute(
-            """
+    return execute_db_command(
+        """
             SELECT puzzle_number, timestamp
             FROM connections_scores
             ORDER BY timestamp DESC
             LIMIT ?
         """,
-            (limit,),
-        )
-        puzzles = cursor.fetchall()
-        return puzzles
-    except sqlite3.Error as e:
-        print(f"Database error in get_overall_recent_connections_puzzle_number: {e}")
-        return []  # Return empty list in case of error
-    finally:
-        conn.close()
+        (limit,),
+        get=True,
+    )
 
 
 def get_latest_game_number_from_db(game_name):
     """Fetches the latest game number from the database."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
+    numbers = execute_db_command(
         "SELECT latest_number FROM latest_game_numbers WHERE game_name = ?",
         (game_name,),
+        get=True,
     )
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else 0
-    print(f"DB: Retrieved latest_number for {game_name} = {latest_number}")  # DEBUGGING
+    if numbers:
+        print(
+            f"DB: Retrieved latest_number for {game_name} = {numbers[-1]}"
+        )  # DEBUGGING
+        return numbers[-1]
+    else:
+        return 0
 
 
 def update_latest_game_number_in_db(game_name, latest_number):
     """Updates the latest game number in the database."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
+    execute_db_command(
         "INSERT OR REPLACE INTO latest_game_numbers (game_name, latest_number) VALUES (?, ?)",
         (
             game_name,
             latest_number,
         ),
     )
-    conn.commit()
-    conn.close()
     print(f"DB: Updated latest_number for {game_name} to {latest_number}")  # DEBUGGING
