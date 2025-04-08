@@ -29,213 +29,189 @@ class GamesBot(commands.Bot):
         super().__init__(
             command_prefix=os.getenv("COMMAND_PREFIX", "!"), intents=intents
         )
+        self.handlers = []
+
         # Initialize db once, on_ready can be called every bot refresh/wakeup
         database.initialize_db()
 
-        # Start scheduled tasks
-        check_weekly_scores()
-        check_monthly_scores()
-        now = datetime.datetime.now(TIMEZONE)
-        if 6 == now.weekday():
-            # Where TF is this shit defined?
-            await post_weekly_scores()
-        elif 1 == now.day:
-            await post_monthly_scores()
+        # # Start scheduled tasks
+        # check_weekly_scores.start()
+        # check_monthly_scores.start()
+        # now = datetime.datetime.now(self.timezone)
+        # if 6 == now.weekday():
+        #     # Where TF is this shit defined?
+        #     await post_weekly_scores()
+        # elif 1 == now.day:
+        #     await post_monthly_scores()
 
+    # async def handler_setup(self):
+    #     for handler, prefix in []:
+    #         await self.add_cog(handler(self, prefix))
 
-@bot.event
-async def on_ready():
-    """Handler for when the bot is ready."""
-    print(f"Logged in as {self.user}")
+    async def setup_hook(self):
+        """
+        To perform asynchronous setup after the bot is logged in but before it has connected to the Websocket, overwrite this coroutine.
+        This is only called once, in login(), and will be called before any events are dispatched, making it a better solution than doing such setup in the on_ready() event.
+        """
+        try:
+            for handler in [
+                "modules." + module.removesuffix(".py")
+                for module in os.listdir("modules")
+                if not module.startswith("_") and module.endswith(".py")
+            ]:
+                await self.load_extension(handler)
+                print(handler)
+        except Exception as e:
+            print(f"Could not load {handler} : {e}")
+        finally:
+            print("syncing")
+            await self.tree.sync()
 
-    # Start the scheduled tasks
-    check_weekly_scores.start()
-    check_monthly_scores.start()
+    async def on_ready(self):
+        """Handler for when the bot is ready."""
+        print(f"Logged in as {self.user}")
 
-    # Check if we should post scores immediately
-    now = datetime.datetime.now(TIMEZONE)
-    if now.weekday() == 6:  # Sunday
-        await post_weekly_scores()
-    if now.day == 1:
-        await post_monthly_scores()
+    async def on_message(self, message: discord.Message):
+        """Handler for new messages."""
+        if message.author.bot:
+            return  # Ignore bot messages
+        # for handler in self.extensions.items():
 
+        #     handler.dispatch(message)
+        # content = message.content
+        # processed = False
 
-@bot.event
-async def on_message(message):
-    """Handler for new messages."""
-    if message.author.bot:
-        return  # Ignore bot messages
+        # # Check if the message is in the 'scores' channel
+        # if message.channel.name == "scores":
+        #     # Check each game configuration
+        #     for game_key, config in game_config.GAME_CONFIGS.items():
+        #         if config["is_game_message"](content):
+        #             print(
+        #                 f"Detected {config['name']} message from {message.author.display_name}"
+        #             )
+        #             await handle_game_message(message, game_key, config)
+        #             processed = True
+        #             break
 
-    content = message.content
-    processed = False
+        # if not processed:
+        #     await bot.process_commands(
+        #         message
+        #     )  # Process commands if not a game message
 
-    # Check if the message is in the 'scores' channel
-    if message.channel.name == "scores":
-        # Check each game configuration
-        for game_key, config in game_config.GAME_CONFIGS.items():
-            if config["is_game_message"](content):
-                print(
-                    f"Detected {config['name']} message from {message.author.display_name}"
-                )
-                await handle_game_message(message, game_key, config)
-                processed = True
-                break
+    # async def handle_game_message(message, game_key, game_config):
+    #     """
+    #     Handle a game message (Wordle, Connections, Framed, Gisnep, Bandle).
 
-    if not processed:
-        await bot.process_commands(message)  # Process commands if not a game message
+    #     Args:
+    #         message: The Discord message
+    #         game_key: The key for the game in the GAME_CONFIGS dictionary
+    #         game_config: The game configuration dictionary
+    #     """
+    #     guild = message.guild
+    #     member = message.author
+    #     display_name = message.author.display_name
+    #     user_id = message.author.id
 
+    #     # Parse the message content
+    #     game_info = game_config["parse_function"](message.content)
 
-async def handle_game_message(message, game_key, game_config):
-    """
-    Handle a game message (Wordle, Connections, Framed, Gisnep, Bandle).
+    #     if not game_info:
+    #         await message.channel.send(
+    #             f"⚠️ Couldn't process your {game_config['name']} result."
+    #         )
+    #         return
 
-    Args:
-        message: The Discord message
-        game_key: The key for the game in the GAME_CONFIGS dictionary
-        game_config: The game configuration dictionary
-    """
-    guild = message.guild
-    member = message.author
-    display_name = message.author.display_name
-    user_id = message.author.id
+    #     # Save the score based on the game type
+    #     if game_key == "wordle":
+    #         game_config["save_score_function"](
+    #             user_id,
+    #             display_name,
+    #             game_info["game_number"],
+    #             game_info["attempts"],
+    #             game_info.get("skill"),  # Use .get() to handle None values
+    #             game_info.get("luck"),
+    #             game_info.get("hard_mode", False),
+    #         )
 
-    # Parse the message content
-    game_info = game_config["parse_function"](message.content)
+    #     elif game_key == "connections":
+    #         game_config["save_score_function"](
+    #             user_id,
+    #             display_name,
+    #             game_info["puzzle_number"],
+    #             game_info["total_score"],
+    #             game_info["num_guesses"],
+    #             game_info["solved_purple_first"],
+    #             game_info["solved_blue_first"],
+    #         )
 
-    if not game_info:
-        await message.channel.send(
-            f"⚠️ Couldn't process your {game_config['name']} result."
-        )
-        return
+    #     elif game_key == "framed":
+    #         game_config["save_score_function"](
+    #             user_id,
+    #             display_name,
+    #             game_info["game_number"],
+    #             game_info["attempts"],
+    #             game_info["total_score"],
+    #         )
 
-    # Save the score based on the game type
-    if game_key == "wordle":
-        game_config["save_score_function"](
-            user_id,
-            display_name,
-            game_info["game_number"],
-            game_info["attempts"],
-            game_info.get("skill"),  # Use .get() to handle None values
-            game_info.get("luck"),
-            game_info.get("hard_mode", False),
-        )
+    #     elif game_key == "gisnep":
+    #         game_config["save_score_function"](
+    #             user_id,
+    #             display_name,
+    #             game_info["game_number"],
+    #             game_info["completion_time"],
+    #         )
 
-    elif game_key == "connections":
-        game_config["save_score_function"](
-            user_id,
-            display_name,
-            game_info["puzzle_number"],
-            game_info["total_score"],
-            game_info["num_guesses"],
-            game_info["solved_purple_first"],
-            game_info["solved_blue_first"],
-        )
+    #     elif game_key == "bandle":
+    #         game_config["save_score_function"](
+    #             user_id,
+    #             display_name,
+    #             game_info["game_number"],
+    #             game_info["attempts"],
+    #             game_info["total_score"],
+    #             game_info["bonus_completed"],
+    #             game_info["bonus_total"],
+    #         )
 
-    elif game_key == "framed":
-        game_config["save_score_function"](
-            user_id,
-            display_name,
-            game_info["game_number"],
-            game_info["attempts"],
-            game_info["total_score"],
-        )
+    #     # Create the acknowledgement message
+    #     response = game_config["create_acknowledgement"](display_name, game_info)
 
-    elif game_key == "gisnep":
-        game_config["save_score_function"](
-            user_id,
-            display_name,
-            game_info["game_number"],
-            game_info["completion_time"],
-        )
+    #     # Get the latest game number from the database
+    #     game_number_key = game_config[
+    #         "game_number_key"
+    #     ]  # Use game_number_key from config
+    #     latest_game_number = game_config["get_latest_game_number_function"](
+    #         game_config["name"]
+    #     )
+    #     print(  # DEBUGGING
+    #         f"{game_config['name']}: Retrieved latest_game_number ="
+    #         f" {latest_game_number}"
+    #     )
+    #     current_game_number = game_info[game_number_key]
 
-    elif game_key == "bandle":
-        game_config["save_score_function"](
-            user_id,
-            display_name,
-            game_info["game_number"],
-            game_info["attempts"],
-            game_info["total_score"],
-            game_info["bonus_completed"],
-            game_info["bonus_total"],
-        )
+    #     # If this is the latest game, update roles and notify
+    #     if current_game_number >= latest_game_number:
+    #         game_config["update_latest_game_number_function"](
+    #             game_config["name"], current_game_number
+    #         )
+    #         print(  # DEBUGGING
+    #             f"{game_config['name']}: Updated latest_game_number to"
+    #             f" {game_number_key}"
+    #         )
 
-    # Create the acknowledgement message
-    response = game_config["create_acknowledgement"](display_name, game_info)
+    #         # Handle role assignment
+    #         success = await role_manager.handle_game_role_assignment(
+    #             guild, member, game_config, current_game_number, latest_game_number
+    #         )
 
-    # Get the latest game number from the database
-    game_number_key = game_config["game_number_key"]  # Use game_number_key from config
-    latest_game_number = game_config["get_latest_game_number_function"](
-        game_config["name"]
-    )
-    print(  # DEBUGGING
-        f"{game_config['name']}: Retrieved latest_game_number ="
-        f" {latest_game_number}"
-    )
-    current_game_number = game_info[game_number_key]
+    #         if success:
+    #             chat_channel_name = game_config["chat_channel_name"]
+    #             response += f"\n\n{member.mention} You now have access to the {chat_channel_name} channel!"
+    #             await role_manager.introduce_player_in_game_channel(
+    #                 guild, display_name, game_config, game_info
+    #             )
 
-    # If this is the latest game, update roles and notify
-    if current_game_number >= latest_game_number:
-        game_config["update_latest_game_number_function"](
-            game_config["name"], current_game_number
-        )
-        print(  # DEBUGGING
-            f"{game_config['name']}: Updated latest_game_number to"
-            f" {game_number_key}"
-        )
-
-        # Handle role assignment
-        success = await role_manager.handle_game_role_assignment(
-            guild, member, game_config, current_game_number, latest_game_number
-        )
-
-        if success:
-            chat_channel_name = game_config["chat_channel_name"]
-            response += f"\n\n{member.mention} You now have access to the {chat_channel_name} channel!"
-            await role_manager.introduce_player_in_game_channel(
-                guild, display_name, game_config, game_info
-            )
-
-    # Send the response message
-    await message.channel.send(response)
-
-
-@bot.command()
-async def myscore(ctx):
-    """Show the user's last 5 Wordle scores."""
-    user_id = ctx.author.id
-    scores = database.get_recent_scores(user_id, limit=5)
-
-    if not scores:
-        await ctx.send("No Wordle scores recorded for you yet!")
-        return
-
-    message = f"📊 **{ctx.author.display_name}'s Last 5 Wordle Scores**\n"
-    for game_number, attempts, skill, luck, timestamp in scores:
-        message += f"📅 {timestamp[:10]} | **Game {game_number}** — {attempts}/6 | Skill: {skill}/99 | Luck: {luck}/99\n"
-
-    await ctx.send(message)
-
-
-@bot.command()
-async def leaderboard(ctx, game="wordle"):
-    """Display the leaderboard for Wordle or Connections."""
-    game = game.lower()
-
-    if game not in game_config.GAME_CONFIGS:
-        await ctx.send("Invalid game choice! Use 'wordle' or 'connections'.")
-        return
-
-    config = game_config.GAME_CONFIGS[game]
-    leaderboard = config["get_leaderboard_function"]()
-    game_name = config["name"]
-
-    # Format the leaderboard display
-    leaderboard_message = f"🏆 **{game_name} Leaderboard** 🏆\n"
-    for i, (player, best_score) in enumerate(leaderboard, 1):
-        leaderboard_message += f"{i}. {player} - {best_score} points\n"
-
-    # Send leaderboard to channel
-    await ctx.send(leaderboard_message)
+    #     # Send the response message
+    #     await message.channel.send(response)
 
 
 if __name__ == "__main__":

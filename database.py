@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 import zoneinfo
 
 
-def execute_db_command(command: str, parameters: tuple = (), get=False) -> list | None:
+def execute_command(
+    command: str, parameters: tuple = (), get: int | str | None = None
+) -> list | None:
     """
     Execute command to DB
     """
@@ -15,15 +17,20 @@ def execute_db_command(command: str, parameters: tuple = (), get=False) -> list 
             command,
             parameters,
         )
-        if get:
-            retval = cursor.fetchall()
+        match get:
+            case 0 | None:
+                retval = None
+            case "all":
+                retval = cursor.fetchall()
+            case _:
+                retval = cursor.fetchmany()
         return retval
 
 
 def initialize_db():
     """Create the database and tables if they don't exist."""
     # Wordle. Added hard_mode column and made skill/luck nullable
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS wordle_scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +48,7 @@ def initialize_db():
     )
 
     # Connections table (corrected)
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS connections_scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,15 +57,15 @@ def initialize_db():
             puzzle_number TEXT,
             total_score INTEGER,
             guesses INTEGER,
-            solved_purple_first BOOLEAN,
-            solved_blue_first BOOLEAN,
+            solved_first,
+            finished_game
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
 
     # New generic table for tracking latest game numbers
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS latest_game_numbers (
             game_name TEXT PRIMARY KEY,
@@ -70,13 +77,13 @@ def initialize_db():
     # Initialize with 0 if empty
     # TODO: remove this hardcode here
     for game in ["wordle", "connections", "framed", "gisnep", "bandle"]:
-        execute_db_command(
+        execute_command(
             "INSERT OR IGNORE INTO latest_game_numbers (game_name, latest_number) VALUES (?, 0)",
             (game,),
         )
 
     # Framed Table
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS framed_scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +98,7 @@ def initialize_db():
     )
 
     # Gisnep Table (Stores time instead of points)
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS gisnep_scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,7 +112,7 @@ def initialize_db():
     )
 
     # Bandle Table
-    execute_db_command(
+    execute_command(
         """
         CREATE TABLE IF NOT EXISTS bandle_scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +139,7 @@ def save_wordle_score(
 
     total_score = (skill or 0) + score - (luck or 0)
 
-    execute_db_command(
+    execute_command(
         """
             INSERT INTO wordle_scores (user_id, display_name, game_number, attempts, skill, luck, hard_mode, total_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -156,13 +163,13 @@ def save_connections_score(
     puzzle_number,
     total_score,
     guesses,
-    solved_purple_first,
-    solved_blue_first,
+    solved_first,
+    finished_game,
 ):
     """Save a new Connections score."""
-    execute_db_command(
+    execute_command(
         """
-            INSERT INTO connections_scores (user_id, display_name, puzzle_number, total_score, guesses, solved_purple_first, solved_blue_first)
+            INSERT INTO connections_scores (user_id, display_name, puzzle_number, total_score, guesses, solved_first, finished_game)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -171,15 +178,15 @@ def save_connections_score(
             puzzle_number,
             total_score,
             guesses,
-            solved_purple_first,
-            solved_blue_first,
+            solved_first,
+            finished_game,
         ),
     )
 
 
 def create_connections_scores_table():
     """Create the Connections scores table if it doesn't exist."""
-    execute_db_command(
+    execute_command(
         """
             CREATE TABLE IF NOT EXISTS connections_scores (
                 user_id INTEGER,
@@ -197,7 +204,7 @@ def create_connections_scores_table():
 
 def save_framed_score(user_id, display_name, game_number, attempts, total_score):
     """Save a new Framed score."""
-    execute_db_command(
+    execute_command(
         """
             INSERT INTO framed_scores (user_id, display_name, game_number, attempts, total_score)
             VALUES (?, ?, ?, ?, ?)
@@ -208,7 +215,7 @@ def save_framed_score(user_id, display_name, game_number, attempts, total_score)
 
 def save_gisnep_score(user_id, display_name, game_number, completion_time):
     """Save a new Gisnep score (only stores time)."""
-    execute_db_command(
+    execute_command(
         """
         INSERT INTO gisnep_scores (user_id, display_name, game_number, completion_time)
         VALUES (?, ?, ?, ?)
@@ -227,7 +234,7 @@ def save_bandle_score(
     bonus_total,
 ):
     """Save a new Bandle score, including bonus rounds separately."""
-    execute_db_command(
+    execute_command(
         """
             INSERT INTO bandle_scores (user_id, display_name, game_number, attempts, total_score, bonus_completed, bonus_total)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -247,7 +254,7 @@ def save_bandle_score(
 # Database functions for tracking roles (add these to your database.py file)
 def save_user_role(user_id, role_name, game_number, expires_at):
     """Save information about a role granted to a user."""
-    execute_db_command(
+    execute_command(
         """
         INSERT OR REPLACE INTO user_roles 
         (user_id, role_name, game_number, expires_at) 
@@ -259,7 +266,7 @@ def save_user_role(user_id, role_name, game_number, expires_at):
 
 def get_recent_scores(user_id, limit=5) -> list:
     """Retrieve the last `limit` games played by a user."""
-    return execute_db_command(
+    return execute_command(
         """
                 SELECT game_number, attempts, skill, luck, timestamp
                 FROM wordle_scores
@@ -268,55 +275,55 @@ def get_recent_scores(user_id, limit=5) -> list:
                 LIMIT ?
             """,
         (user_id, limit),
-        True,
+        get=limit,
     )
 
 
 def get_wordle_leaderboard() -> list:
     """Fetch the top players for Wordle leaderboard."""
-    return execute_db_command(
+    return execute_command(
         """
-                SELECT display_name, MAX(total_score) AS best_score
-                FROM wordle_scores
-                GROUP BY display_name
-                ORDER BY best_score DESC
-                LIMIT 10
-            """,
-        get=True,
+            SELECT display_name, MAX(total_score) AS best_score
+            FROM wordle_scores
+            GROUP BY display_name
+            ORDER BY best_score DESC
+            LIMIT 10
+        """,
+        get=limit,
     )
 
 
 def get_connections_leaderboard():
     """Fetch the top players for Connections leaderboard."""
-    return execute_db_command(
+    return execute_command(
         """
-                SELECT display_name, SUM(total_score) AS total_score
-                FROM connections_scores
-                GROUP BY display_name
-                ORDER BY total_score DESC
-                LIMIT 10
-            """,
+            SELECT display_name, SUM(total_score) AS total_score
+            FROM connections_scores
+            GROUP BY display_name
+            ORDER BY total_score DESC
+            LIMIT 10
+        """,
         get=True,
     )
 
 
 def get_framed_leaderboard():
     """Fetch top players for Framed based on highest scores."""
-    return execute_db_command(
+    return execute_command(
         """
             SELECT display_name, MAX(total_score) AS best_score
             FROM framed_scores
             GROUP BY display_name
             ORDER BY best_score DESC
             LIMIT 10
-            """,
+        """,
         get=True,
     )
 
 
 def get_gisnep_leaderboard():
     """Fetch top players for Gisnep, ranking by shortest average time."""
-    return execute_db_command(
+    return execute_command(
         """
             SELECT display_name, AVG(completion_time) AS avg_time, COUNT(*) AS games_played
             FROM gisnep_scores
@@ -330,7 +337,7 @@ def get_gisnep_leaderboard():
 
 def get_bandle_leaderboard():
     """Fetch top players for Bandle based on highest total scores."""
-    return execute_db_command(
+    return execute_command(
         """
         SELECT display_name, SUM(total_score) AS total_score
         FROM bandle_scores
@@ -348,7 +355,7 @@ def get_weekly_scores():
         datetime.now(zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin")))
         - timedelta(days=7)
     ).strftime("%Y-%m-%d %H:%M:%S")
-    wordle = execute_db_command(
+    wordle = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM wordle_scores
@@ -359,7 +366,7 @@ def get_weekly_scores():
         (one_week_ago,),
         get=True,
     )
-    connections = execute_db_command(
+    connections = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM connections_scores
@@ -370,7 +377,7 @@ def get_weekly_scores():
         (one_week_ago,),
         get=True,
     )
-    framed = execute_db_command(
+    framed = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM framed_scores
@@ -381,7 +388,7 @@ def get_weekly_scores():
         (one_week_ago,),
         get=True,
     )
-    gisnep = execute_db_command(
+    gisnep = execute_command(
         """
             SELECT display_name, AVG(completion_time) AS avg_time
             FROM gisnep_scores
@@ -392,7 +399,7 @@ def get_weekly_scores():
         (one_week_ago,),
         get=True,
     )
-    bandle = execute_db_command(
+    bandle = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM bandle_scores
@@ -420,7 +427,7 @@ def get_monthly_scores():
         .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         .strftime("%Y-%m-%d %H:%M:%S")
     )
-    wordle = execute_db_command(
+    wordle = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM wordle_scores
@@ -431,7 +438,7 @@ def get_monthly_scores():
         (first_day_of_month,),
         get=True,
     )
-    connections = execute_db_command(
+    connections = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM connections_scores
@@ -442,7 +449,7 @@ def get_monthly_scores():
         (first_day_of_month,),
         get=True,
     )
-    framed = execute_db_command(
+    framed = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM framed_scores
@@ -453,7 +460,7 @@ def get_monthly_scores():
         (first_day_of_month,),
         get=True,
     )
-    gisnep = execute_db_command(
+    gisnep = execute_command(
         """
             SELECT display_name, AVG(completion_time) AS avg_time
             FROM gisnep_scores
@@ -464,7 +471,7 @@ def get_monthly_scores():
         (first_day_of_month,),
         get=True,
     )
-    bandle = execute_db_command(
+    bandle = execute_command(
         """
             SELECT display_name, SUM(total_score) AS total_score
             FROM bandle_scores
@@ -489,7 +496,7 @@ def get_expired_roles():
     now = datetime.datetime.now(
         zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
     ).strftime("%Y-%m-%d %H:%M:%S")
-    return execute_db_command(
+    return execute_command(
         """
         SELECT user_id, role_name FROM user_roles
         WHERE expires_at < ?
@@ -504,7 +511,7 @@ def delete_expired_roles():
     now = datetime.datetime.now(
         zoneinfo.ZoneInfo(os.getenv("TIMEZONE", "Europe/Berlin"))
     ).strftime("%Y-%m-%d %H:%M:%S")
-    execute_db_command(
+    execute_command(
         """
         DELETE FROM user_roles WHERE expires_at < ?
         """,
@@ -517,7 +524,7 @@ def get_overall_recent_wordle_scores(limit=5):
     Fetches the most recent Wordle scores from all users, ordered by timestamp descending,
     limited to the specified number.
     """
-    return execute_db_command(
+    return execute_command(
         """
             SELECT game_number, attempts, skill, luck, timestamp
             FROM wordle_scores
@@ -535,7 +542,7 @@ def get_overall_recent_connections_puzzle_number(limit=5):
     ordered by timestamp descending, limited to the specified number.
     Returns a list of tuples, each containing (puzzle_number, timestamp).
     """
-    return execute_db_command(
+    return execute_command(
         """
             SELECT puzzle_number, timestamp
             FROM connections_scores
@@ -549,7 +556,7 @@ def get_overall_recent_connections_puzzle_number(limit=5):
 
 def get_latest_game_number_from_db(game_name):
     """Fetches the latest game number from the database."""
-    numbers = execute_db_command(
+    numbers = execute_command(
         "SELECT latest_number FROM latest_game_numbers WHERE game_name = ?",
         (game_name,),
         get=True,
@@ -565,7 +572,7 @@ def get_latest_game_number_from_db(game_name):
 
 def update_latest_game_number_in_db(game_name, latest_number):
     """Updates the latest game number in the database."""
-    execute_db_command(
+    execute_command(
         "INSERT OR REPLACE INTO latest_game_numbers (game_name, latest_number) VALUES (?, ?)",
         (
             game_name,
